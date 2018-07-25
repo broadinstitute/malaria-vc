@@ -56,27 +56,20 @@ workflow Malaria_WGS_GATK3 {
         String sample_name = sample[0]
         String sample_bam_path = sample[1]	
 
-        call MarkDuplicates {
+        call AlignSortDedupReads {
             input:
             sample_name = sample_name,
-            sorted_bam = sample_bam_path
+            reads_bam = sample_bam_path
         }
 
-        call ReorderBam {
-            input:
-            ref = ref,
-            dict = ref_dict, 
-            bam = MarkDuplicates.bam
-        }
-    	
         # base quality score recalibration 
         call BQSR {
             input:
-            ref = ref, 
+            ref_fasta = ref, 
             ref_dict = ref_dict, 
             ref_index = ref_index,
-            bam = ReorderBam.out,
-            bam_index = ReorderBam.out_index,
+            bam = AlignSortDedupReads.aligned_bam,
+            bam_index = AlignSortDedupReads.aligned_bam_index,
             sample_name = sample_name, 
             known_sites = known_sites,
             known_sites_indices = known_sites_indices,
@@ -179,67 +172,71 @@ workflow Malaria_WGS_GATK3 {
     }
 }
 
-
 ## TASK DEFINITIONS 
-# mark duplicate reads in bam 
-task MarkDuplicates {
-    File sorted_bam
-    String sample_name
+
+task AlignSortDedupReads {
+    File reads_bam
+    File ref_fasta
+    File ref_idx_dict
+    File ref_idx_fai
+    File ref_idx_amb
+    File ref_idx_ann
+    File ref_idx_bwt
+    File ref_idx_pac
+    File ref_idx_sa
 
     command {
-        java -Xmx7G -jar /usr/gitc/picard.jar MarkDuplicates \
-            I=${sorted_bam} \
-            O=${sample_name}.marked_duplicates.bam \
-            M=${sample_name}.marked_duplicates.metrics
-    }
+        set -ex -o pipefail
+        _MEM="12G"
+        _MEM_HALF="6G"
 
-    output {
-        File bam = "${sample_name}.marked_duplicates.bam"
-    } 
+        # TODO: pull {read_group} from in_bam header
+        bwa index ${ref_fasta}
 
-    runtime {
-        docker: "broadinstitute/genomes-in-the-cloud:2.3.1-1512499786"
-        memory: "7 GB"
-        cpu: 1
-        disks: "local-disk 100 LOCAL"
-    }
-}
+        # align uBAM reads to indexed reference and emit aligned bam output
+        java -Xmx"$_MEM_HALF" -jar /usr/gitc/picard.jar SamToFastq \
+            INPUT=${reads_bam} \
+            FASTQ=/dev/stdout \
+            INTERLEAVE=true \
+            VALIDATION_STRINGENCY=LENIENT \
+        | bwa mem -t `nproc` -R ${read_group} -p ${ref_fasta} - \
+        | samtools view -bS - \
+        > tempfile1.bam
 
-# reorder and index a bam  
-task ReorderBam {
-    File ref
-    File dict
-    File bam
-    String bam_prefix = basename(bam, '.bam')
-
-    command {
-        # reorder bam 
-        java -Xmx7G -jar /usr/gitc/picard.jar ReorderSam \
-            I=${bam} \
-            O=${bam_prefix}.reordered.bam \
+        # sort, markdup, reorder, and index aligned bam
+        java -Xmx"$_MEM" -jar /usr/gitc/picard.jar SortSam \
+            I=tempfile1.bam \
+            O=tempfile2.bam \
+            SO=coordinate
+        rm tempfile1.bam
+        java -Xmx"$_MEM" -jar /usr/gitc/picard.jar MarkDuplicates \
+            I=tempfile2.bam \
+            O=tempfile3.bam \
+            M=marked_duplicates.metrics
+        rm tempfile2.bam
+        java -Xmx"$_MEM" -jar /usr/gitc/picard.jar ReorderSam \
+            I=tempfile3.bam \
+            O=${sample_name}.aligned.bam \
             R=${ref}
-
-        # then index 
-        java -Xmx7G -jar /usr/gitc/picard.jar BuildBamIndex \
-            I=${bam_prefix}.reordered.bam
+        rm tempfile3.bam
+        samtools index ${sample_name}.aligned.bam
     }
-    
     output {
-        File out = "${bam_prefix}.reordered.bam"
-        File out_index = "${bam_prefix}.reordered.bai"
-    } 
-
+        File aligned_bam = "${sample_name}.aligned.bam"
+        File aligned_bam_idx = "${sample_name}.aligned.bai"
+    }
     runtime {
         docker: "broadinstitute/genomes-in-the-cloud:2.3.1-1512499786"
-        memory: "7 GB"
-        cpu: 2
+        memory: "14 GB"
+        cpu: 8
         disks: "local-disk 100 LOCAL"
     }
 }
+
 
 # base quality score recalibration
 task BQSR {
-    File ref
+    File ref_fasta
     File ref_dict
     File ref_index
     File bam 
@@ -254,11 +251,10 @@ task BQSR {
     command {  
         # build BQSR table 
         java -Xmx7G -jar /usr/gitc/GATK36.jar -T BaseRecalibrator -nt 1 \
-            -R ${ref} -I ${bam} \
+            -R ${ref_fasta} -I ${bam} \
             -knownSites ${sep=" -knownSites " known_sites} \
             --excludeIntervals ${sep=" --excludeIntervals " intervals_to_exclude} \
             -o ${output_table_name}
-            
 
         # install GATK AnalyzeCovariates R dependencies
         R --vanilla << CODE
@@ -270,7 +266,7 @@ task BQSR {
         # AnalyzeCovariates
         java -jar /usr/gitc/GATK36.jar \
             -T AnalyzeCovariates \
-            -R ${ref} \
+            -R ${ref_fasta} \
             --BQSR ${output_table_name} \
             -plots ${sample_name}.bqsr.pdf
 
@@ -278,7 +274,7 @@ task BQSR {
         java -Xmx7G -jar /usr/gitc/GATK36.jar \
             -T PrintReads \
             -nt 1 \
-            -R ${ref} \
+            -R ${ref_fasta} \
             -I ${bam} \
             --BQSR ${output_table_name} \
             -o ${output_bam_name}
