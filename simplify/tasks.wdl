@@ -28,7 +28,7 @@ task IndexFasta {
         docker: "broadinstitute/genomes-in-the-cloud:2.3.1-1512499786"
         memory: "7 GB"
         cpu:    2
-        disks:  "local-disk 100 HDD"
+        disks:  "local-disk 100 SSD"
     }
 }
 
@@ -115,7 +115,7 @@ task AlignSortDedupReads {
         docker: "broadinstitute/genomes-in-the-cloud:2.3.1-1512499786"
         memory: "14 GB"
         cpu:    8
-        disks:  "local-disk 100 HDD"
+        disks:  "local-disk 100 SSD"
     }
 }
 
@@ -155,7 +155,7 @@ task BaseRecalibrator_1 {
         docker: "broadinstitute/genomes-in-the-cloud:2.3.1-1512499786"
         memory: "7 GB" 
         cpu:    2
-        disks:  "local-disk 100 HDD"
+        disks:  "local-disk 100 SSD"
     }
 }
 
@@ -208,7 +208,7 @@ task BaseRecalibrator_2 {
         docker: "broadinstitute/genomes-in-the-cloud:2.3.1-1512499786"
         memory: "7 GB" 
         cpu:    2
-        disks:  "local-disk 100 HDD"
+        disks:  "local-disk 100 SSD"
     }
 }
 
@@ -257,7 +257,7 @@ task HaplotypeCaller {
         docker: "broadinstitute/genomes-in-the-cloud:2.3.1-1512499786"
         memory: "7 GB"
         cpu:    2
-        disks:  "local-disk 100 HDD"
+        disks:  "local-disk 100 SSD"
     }
   }
 
@@ -294,7 +294,7 @@ task GenotypeGVCFs {
         docker: "broadinstitute/genomes-in-the-cloud:2.3.1-1512499786"
         memory: "13 GB"
         cpu: 2
-        disks: "local-disk 100 HDD"
+        disks: "local-disk 100 SSD"
     }
 }
 
@@ -374,7 +374,7 @@ task VQSR {
         docker: "broadinstitute/genomes-in-the-cloud:2.3.1-1512499786"
         memory: "7 GB"
         cpu: 2
-        disks: "local-disk 100 HDD"
+        disks: "local-disk 100 SSD"
     }
 }
 
@@ -448,7 +448,7 @@ task HardFiltration {
         docker: "broadinstitute/genomes-in-the-cloud:2.3.1-1512499786"
         memory: "7 GB"
         cpu: 2
-        disks: "local-disk 100 HDD"
+        disks: "local-disk 100 SSD"
     }
 }
 
@@ -493,6 +493,6 @@ task SnpEff {
         docker: "maxulysse/snpeff:1.3"
         memory: "7 GB"
         cpu: 2
-        disks: "local-disk 100 HDD"
+        disks: "local-disk 100 SSD"
     }
 }
