@@ -1,5 +1,5 @@
 # 
-#  GATK3-merge-samples.wdl: 
+#  gatk3-merge-samples.wdl: 
 #     - standardized pipeline for merging per-sample HaplotypeCaller outputs,
 #       calling SNPs and indels jointly, hard filtering, and annotating. 
 #     - developed by Malaria Group, IDMP, Broad Institute. 

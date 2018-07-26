@@ -1,5 +1,5 @@
 # 
-#  GATK3-one-sample.wdl: 
+#  gatk3-one-sample.wdl: 
 #     - standardized pipeline for aligning reads and calling SNPs and
 #       indels for a single sample using HaplotypeCaller. 
 #     - developed by Malaria Group, IDMP, Broad Institute. 

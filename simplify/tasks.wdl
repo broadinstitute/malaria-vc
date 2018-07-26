@@ -48,29 +48,47 @@ task AlignSortDedupReads {
     command {
         set -ex -o pipefail
 
-        # TODO: pull {read_group} from in_bam header
+        # get list of read groups
+        samtools view -H ${reads_bam} | grep ^@RG | sed -E -e 's/^@RG.*ID:([^[:space:]]+).*$/\1/' > read_group_ids.txt
 
-        # align uBAM reads to indexed reference and emit aligned bam output
-        java -Xmx2G -jar /usr/gitc/picard.jar SamToFastq \
-            INPUT=${reads_bam} \
-            FASTQ=/dev/stdout \
-            INTERLEAVE=true \
-            VALIDATION_STRINGENCY=LENIENT \
-        | bwa mem -t `nproc` -R ${read_group} -p ${ref_fasta} - \
-        | samtools view -bS - \
-        > tempfile1.bam
+        # align one RG at a time (because BWA can only write
+        # metadata for one RG at a time)
+        touch bam_filenames.txt
+        for _RG_ID in `cat read_group_ids.txt`; do
+            echo "aligning read group $_RG_ID"
 
-        # sort, markdup, and index aligned bam
-        java -Xmx12G -jar /usr/gitc/picard.jar SortSam \
-            I=tempfile1.bam \
-            O=tempfile2.bam \
-            SO=coordinate
-        rm tempfile1.bam
+            # strip input bam to only one read group
+            samtools view -b1 -r $_RG_ID ${reads_bam} > tempfile0.bam
+            _RG_DATA=`samtools view -H ${reads_bam} | grep ^@RG | grep ID:$_RG_ID | sed -E -e 's/[[:space:]]+/\\t/g'`
+
+            # align uBAM reads to indexed reference and emit aligned bam output
+            java -Xmx2G -jar /usr/gitc/picard.jar SamToFastq \
+                INPUT=reads_$_RG_ID.bam \
+                FASTQ=/dev/stdout \
+                INTERLEAVE=true \
+                VALIDATION_STRINGENCY=LENIENT \
+            | bwa mem -t `nproc` -R "$_RG_DATA" -p ${ref_fasta} - \
+            | samtools view -b1S - \
+            > tempfile1.bam
+            rm tempfile0.bam
+
+            # sort bam and record filename in text file
+            samtools sort -@ `nproc` -l 1 -T tmpsort -o aligned_$_RG_ID.bam tempfile1.bam
+            rm tempfile1.bam
+            echo "I=aligned_$_RG_ID.bam" >> bam_filenames.txt
+
+        # merge bwa results for each read group
+        java -Xmx12G -jar /usr/gitc/picard.jar MergeSamFiles \
+            SORT_ORDER=coordinate USE_THREADING=true CREATE_INDEX=true \
+            `cat bam_filenames.txt` \
+            O=temp_merged_aligned.bam
+
+        # MarkDuplicates and index
         java -Xmx12G -jar /usr/gitc/picard.jar MarkDuplicates \
-            I=tempfile2.bam \
+            I=temp_merged_aligned.bam \
             O=${file_basename}.aligned.bam \
             M=${file_basename}.aligned.markdup.metrics
-        rm tempfile2.bam
+        rm temp_merged_aligned.bam
         samtools index ${file_basename}.aligned.bam
 
         # collect figures of merit
