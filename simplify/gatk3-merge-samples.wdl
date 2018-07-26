@@ -14,14 +14,14 @@ workflow GATK3_Multi_Sample {
     File ref_idx_dict
     File ref_idx_fai
 
-    call GenotypeGVCFs {
+    call tasks.GenotypeGVCFs {
         input:
             ref_fasta    = ref_fasta,
             ref_idx_dict = ref_idx_dict,
             ref_idx_fai  = ref_idx_fai
     }
     
-    call HardFiltration { 
+    call tasks.HardFiltration { 
         input: 
             vcf          = GenotypeGVCFs.out_vcf,
             vcf_tbi      = GenotypeGVCFs.out_vcf_tbi,
@@ -30,7 +30,7 @@ workflow GATK3_Multi_Sample {
             ref_idx_fai  = ref_idx_fai
     }
 
-    call SnpEff {
+    call tasks.SnpEff {
         input:
             vcf       = HardFiltration.out_vcf,
             vcf_tbi   = HardFiltration.out_vcf_tbi,

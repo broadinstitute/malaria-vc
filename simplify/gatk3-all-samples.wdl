@@ -61,7 +61,7 @@ workflow GATK3_Joint_Call_and_Annotate {
         }
     }
 
-    call GenotypeGVCFs {
+    call tasks.GenotypeGVCFs {
         input:
             vcf_files    = HaplotypeCaller.vcf,
             ref_fasta    = ref_fasta,
@@ -69,7 +69,7 @@ workflow GATK3_Joint_Call_and_Annotate {
             ref_idx_fai  = IndexFasta.ref_idx_fai
     }
     
-    call HardFiltration { 
+    call tasks.HardFiltration { 
         input: 
             vcf          = GenotypeGVCFs.out_vcf,
             vcf_tbi      = GenotypeGVCFs.out_vcf_tbi,
@@ -78,7 +78,7 @@ workflow GATK3_Joint_Call_and_Annotate {
             ref_idx_fai  = IndexFasta.ref_idx_fai
     }
 
-    call SnpEff {
+    call tasks.SnpEff {
         input:
             vcf       = HardFiltration.out_vcf,
             vcf_tbi   = HardFiltration.out_vcf_tbi,

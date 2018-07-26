@@ -92,7 +92,8 @@ task AlignSortDedupReads {
         samtools index ${file_basename}.aligned.bam
 
         # collect figures of merit
-        grep -v '^>' ${sample_name}.fasta | tr -d '\n' | wc -c | tee ref_length
+        cat ${ref_idx_dict} | grep "^@SQ" | sed -E -e 's/^@SQ.*LN:([^[:space:]]+).*$/\1/' | python -c "import sys; print(sum(int(l) for l in sys.stdin))" | tee ref_length
+        #grep -v '^>' ${ref_fasta}.fasta | tr -d '\n' | wc -c | tee ref_length
         samtools view -c ${file_basename}.aligned.bam | tee reads_aligned
         samtools flagstat ${file_basename}.aligned.bam | tee ${file_basename}.aligned.flagstat.txt
         grep properly ${file_basename}.aligned.flagstat.txt | cut -f 1 -d ' ' | tee read_pairs_aligned
@@ -280,7 +281,7 @@ task GenotypeGVCFs {
             ${'--intervals ' + intervals} \
             ${true="-allSites" false="" all_sites} \
             -nt `nproc` \
-            --out ${gcvf_out}
+            --out ${out_basename}.vcf
         /usr/gitc/bgzip -c --threads `nproc` ${out_basename}.vcf > ${out_basename}.vcf.gz
         /usr/gitc/tabix -p vcf ${out_basename}.vcf.gz
     }
