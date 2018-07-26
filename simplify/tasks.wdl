@@ -12,10 +12,12 @@ task IndexFasta {
         set -ex -o pipefail
         PATH=$PATH:/usr/gitc
 
-        samtools faidx ${ref_fasta}
+        ln -s ${ref_fasta} ${file_basename}.fasta
+        samtools faidx ${file_basename}.fasta
         java -Xmx3G -jar /usr/gitc/picard.jar CreateSequenceDictionary \
             R=${ref_fasta} O=${file_basename}.dict
-        bwa index ${ref_fasta}
+        bwa index ${file_basename}.fasta
+        ls -alF ${file_basename}.*
     }
     output {
         File  ref_idx_dict     = "${file_basename}.dict"
