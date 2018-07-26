@@ -7,17 +7,17 @@
 task IndexFasta {
     File   ref_fasta
 
-    String file_basename = basename(ref_fasta, '.fasta')
+    String file_basename = basename(ref_fasta)
     command {
         set -ex -o pipefail
         PATH=$PATH:/usr/gitc
 
-        ln -s ${ref_fasta} ${file_basename}.fasta
-        samtools faidx ${file_basename}.fasta
+        ln -s ${ref_fasta} ${file_basename}
+        samtools faidx ${file_basename}
         java -Xmx3G -jar /usr/gitc/picard.jar CreateSequenceDictionary \
             R=${ref_fasta} O=${file_basename}.dict
-        bwa index ${file_basename}.fasta
-        ls -alF ${file_basename}.*
+        bwa index ${file_basename}
+        ls -alF ${file_basename}*
     }
     output {
         File  ref_idx_dict     = "${file_basename}.dict"
