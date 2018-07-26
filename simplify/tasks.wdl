@@ -10,6 +10,8 @@ task IndexFasta {
     String file_basename = basename(ref_fasta, '.fasta')
     command {
         set -ex -o pipefail
+        PATH=$PATH:/usr/gitc
+
         samtools faidx ${ref_fasta}
         java -Xmx3G -jar /usr/gitc/picard.jar CreateSequenceDictionary \
             R=${ref_fasta} O=${file_basename}.dict
@@ -47,6 +49,7 @@ task AlignSortDedupReads {
 
     command {
         set -ex -o pipefail
+        PATH=$PATH:/usr/gitc
 
         # get list of read groups
         samtools view -H ${reads_bam} | grep ^@RG | sed -E -e 's/^@RG.*ID:([^[:space:]]+).*$/\1/' > read_group_ids.txt
@@ -134,6 +137,7 @@ task BaseRecalibrator_1 {
     
     command {
         set -ex -o pipefail
+        PATH=$PATH:/usr/gitc
 
         # build BQSR table 
         BQSR_KNOWN_SITES="${sep=' -knownSites ' known_sites}"
@@ -171,6 +175,7 @@ task BaseRecalibrator_2 {
     
     command {
         set -ex -o pipefail
+        PATH=$PATH:/usr/gitc
 
         # clean reads
         java -Xmx3G -jar /usr/gitc/GATK36.jar \
@@ -232,6 +237,8 @@ task HaplotypeCaller {
 
     command {
         set -ex -o pipefail
+        PATH=$PATH:/usr/gitc
+
         java -Xmx7G -jar /usr/gitc/GATK36.jar \
             -T HaplotypeCaller \
             -R ${ref_fasta} \
@@ -274,6 +281,8 @@ task GenotypeGVCFs {
 
     command {
         set -ex -o pipefail
+        PATH=$PATH:/usr/gitc
+
         java -Xmx12G -jar /usr/gitc/GATK36.jar \
             -T GenotypeGVCFs \
             -R ${ref_fasta} \
@@ -335,6 +344,7 @@ task VQSR {
 
     command {
         set -ex -o pipefail
+        PATH=$PATH:/usr/gitc
 
         # build vqsr file
         java -Xmx7G -jar /usr/gitc/GATK36.jar \
@@ -394,6 +404,7 @@ task HardFiltration {
 
     command {
         set -ex -o pipefail
+        PATH=$PATH:/usr/gitc
 
         # select & filter snps -> filtered_snps.vcf
         java -Xmx3G -jar /usr/gitc/GATK36.jar \
