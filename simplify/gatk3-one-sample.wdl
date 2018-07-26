@@ -15,9 +15,7 @@ workflow GATK3_One_Sample_HC {
 
     call tasks.AlignSortDedupReads {
         input:
-            ref_fasta    = ref_fasta,
-            ref_idx_dict = ref_idx_dict,
-            ref_idx_fai  = ref_idx_fai
+            ref_fasta    = ref_fasta
     }
 
     call tasks.BaseRecalibrator_1 {

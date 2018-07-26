@@ -20,15 +20,8 @@ workflow GATK3_Joint_Call_and_Annotate {
     scatter (reads_bam in reads_bams) {
         call tasks.AlignSortDedupReads {
             input:
-                reads_bam    = reads_bam,
-                ref_fasta    = ref_fasta,
-                ref_idx_dict = IndexFasta.ref_idx_dict,
-                ref_idx_fai  = IndexFasta.ref_idx_fai,
-                ref_idx_amb  = IndexFasta.ref_idx_amb,
-                ref_idx_ann  = IndexFasta.ref_idx_ann,
-                ref_idx_bwt  = IndexFasta.ref_idx_bwt,
-                ref_idx_pac  = IndexFasta.ref_idx_pac,
-                ref_idx_sa   = IndexFasta.ref_idx_sa
+                reads_bam = reads_bam,
+                ref_fasta = ref_fasta
         }
 
         call tasks.BaseRecalibrator_1 {

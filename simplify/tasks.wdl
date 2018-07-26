@@ -5,6 +5,10 @@
 #  
 
 task IndexFasta {
+    # TO DO: move all this to the beginning of each task that needs an index.
+    # it's too fast to make sense to frontload this.. everything happens
+    # in under 20 seconds for a 24MB genome (most of it is bwa index)
+    # It's probably slower to be pushing around the huge index files across network.
     File   ref_fasta
 
     String file_basename = basename(ref_fasta)
@@ -16,17 +20,11 @@ task IndexFasta {
         samtools faidx ${file_basename}
         java -Xmx3G -jar /usr/gitc/picard.jar CreateSequenceDictionary \
             R=${ref_fasta} O=${file_basename}.dict
-        bwa index ${file_basename}
         ls -alF ${file_basename}*
     }
     output {
         File  ref_idx_dict     = "${file_basename}.dict"
         File  ref_idx_fai      = "${file_basename}.fai"
-        File  ref_idx_amb      = "${file_basename}.amb"
-        File  ref_idx_ann      = "${file_basename}.ann"
-        File  ref_idx_bwt      = "${file_basename}.bwt"
-        File  ref_idx_pac      = "${file_basename}.pac"
-        File  ref_idx_sa       = "${file_basename}.sa"
     }
     runtime {
         docker: "broadinstitute/genomes-in-the-cloud:2.3.1-1512499786"
@@ -38,20 +36,21 @@ task IndexFasta {
 
 task AlignSortDedupReads {
     File reads_bam     # unaligned reads in BAM, SAM, or CRAM format
-    File ref_fasta     # not 100% sure this input file is necessary
-    File ref_idx_dict  # Picard/GATK index
-    File ref_idx_fai   # samtools index
-    File ref_idx_amb   # bwa index
-    File ref_idx_ann   # bwa index
-    File ref_idx_bwt   # bwa index
-    File ref_idx_pac   # bwa index
-    File ref_idx_sa    # bwa index
+    File ref_fasta     # reference fasta
 
     String file_basename = basename(reads_bam, ".bam")
 
     command {
         set -ex -o pipefail
         PATH=$PATH:/usr/gitc
+
+        # index fasta
+        $_REF_FASTA_LOCAL=`basename ${ref_fasta}`
+        ln -s ${ref_fasta} $_REF_FASTA_LOCAL
+        bwa index $_REF_FASTA_LOCAL
+        samtools faidx $_REF_FASTA_LOCAL
+        java -Xmx3G -jar /usr/gitc/picard.jar CreateSequenceDictionary \
+            R=$_REF_FASTA_LOCAL O=$_REF_FASTA_LOCAL.dict
 
         # get list of read groups
         samtools view -H ${reads_bam} | grep ^@RG | sed -E -e 's/^@RG.*ID:([^[:space:]]+).*$/\1/' > read_group_ids.txt
@@ -74,7 +73,7 @@ task AlignSortDedupReads {
                 FASTQ=/dev/stdout \
                 INTERLEAVE=true \
                 VALIDATION_STRINGENCY=LENIENT \
-            | bwa mem -t `nproc` -R "$_RG_DATA" -p ${ref_fasta} - \
+            | bwa mem -t `nproc` -R "$_RG_DATA" -p $_REF_FASTA_LOCAL - \
             | samtools view -b1S - \
             > tempfile1.bam
             rm tempfile0.bam
@@ -101,7 +100,7 @@ task AlignSortDedupReads {
         samtools index ${file_basename}.aligned.bam
 
         # collect figures of merit
-        cat ${ref_idx_dict} | grep "^@SQ" | sed -E -e 's/^@SQ.*LN:([^[:space:]]+).*$/\1/' | python -c "import sys; print(sum(int(l) for l in sys.stdin))" | tee ref_length
+        cat $_REF_FASTA_LOCAL.dict | grep "^@SQ" | sed -E -e 's/^@SQ.*LN:([^[:space:]]+).*$/\1/' | python -c "import sys; print(sum(int(l) for l in sys.stdin))" | tee ref_length
         #grep -v '^>' ${ref_fasta}.fasta | tr -d '\n' | wc -c | tee ref_length
         samtools view -c ${file_basename}.aligned.bam | tee reads_aligned
         samtools flagstat ${file_basename}.aligned.bam | tee ${file_basename}.aligned.flagstat.txt
