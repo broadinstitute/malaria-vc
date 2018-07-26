@@ -66,6 +66,8 @@ task AlignSortDedupReads {
             samtools view -b1 -r $_RG_ID ${reads_bam} > tempfile0.bam
             _RG_DATA=`samtools view -H ${reads_bam} | grep ^@RG | grep ID:$_RG_ID | sed -E -e 's/[[:space:]]+/\\t/g'`
 
+            # TO DO: defend against empty tempfile0.bam (zero reads)
+
             # align uBAM reads to indexed reference and emit aligned bam output
             java -Xmx2G -jar /usr/gitc/picard.jar SamToFastq \
                 INPUT=reads_$_RG_ID.bam \
@@ -81,6 +83,8 @@ task AlignSortDedupReads {
             samtools sort -@ `nproc` -l 1 -T tmpsort -o aligned_$_RG_ID.bam tempfile1.bam
             rm tempfile1.bam
             echo "I=aligned_$_RG_ID.bam" >> bam_filenames.txt
+
+        # TO DO: harden generally against empty input bam (zero reads)
 
         # merge bwa results for each read group
         java -Xmx12G -jar /usr/gitc/picard.jar MergeSamFiles \
