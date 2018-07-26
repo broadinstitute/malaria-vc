@@ -4,7 +4,33 @@
 #     - simplified to subset of functionality by dpark/Viral, IDMP, Broad Institute.
 #  
 
-## TASK DEFINITIONS 
+task IndexFasta {
+    File   ref_fasta
+
+    String file_basename = basename(ref_fasta, '.fasta')
+    command {
+        set -ex -o pipefail
+        samtools faidx ${ref_fasta}
+        java -Xmx3G -jar /usr/gitc/picard.jar CreateSequenceDictionary \
+            R=${ref_fasta} O=${file_basename}.dict
+        bwa index ${ref_fasta}
+    }
+    output {
+        File  ref_idx_dict     = "${file_basename}.dict"
+        File  ref_idx_fai      = "${file_basename}.fai"
+        File  ref_idx_amb      = "${file_basename}.amb"
+        File  ref_idx_ann      = "${file_basename}.ann"
+        File  ref_idx_bwt      = "${file_basename}.bwt"
+        File  ref_idx_pac      = "${file_basename}.pac"
+        File  ref_idx_sa       = "${file_basename}.sa"
+    }
+    runtime {
+        docker: "broadinstitute/genomes-in-the-cloud:2.3.1-1512499786"
+        memory: "7 GB"
+        cpu:    2
+        disks:  "local-disk 100 LOCAL"
+    }
+}
 
 task AlignSortDedupReads {
     File reads_bam     # unaligned reads in BAM, SAM, or CRAM format
@@ -21,13 +47,11 @@ task AlignSortDedupReads {
 
     command {
         set -ex -o pipefail
-        _MEM="12G"
-        _MEM_HALF="6G"
 
         # TODO: pull {read_group} from in_bam header
 
         # align uBAM reads to indexed reference and emit aligned bam output
-        java -Xmx"$_MEM_HALF" -jar /usr/gitc/picard.jar SamToFastq \
+        java -Xmx2G -jar /usr/gitc/picard.jar SamToFastq \
             INPUT=${reads_bam} \
             FASTQ=/dev/stdout \
             INTERLEAVE=true \
@@ -36,103 +60,139 @@ task AlignSortDedupReads {
         | samtools view -bS - \
         > tempfile1.bam
 
-        # sort, markdup, reorder, and index aligned bam
-        java -Xmx"$_MEM" -jar /usr/gitc/picard.jar SortSam \
+        # sort, markdup, and index aligned bam
+        java -Xmx12G -jar /usr/gitc/picard.jar SortSam \
             I=tempfile1.bam \
             O=tempfile2.bam \
             SO=coordinate
         rm tempfile1.bam
-        java -Xmx"$_MEM" -jar /usr/gitc/picard.jar MarkDuplicates \
+        java -Xmx12G -jar /usr/gitc/picard.jar MarkDuplicates \
             I=tempfile2.bam \
-            O=tempfile3.bam \
-            M=marked_duplicates.metrics
-        rm tempfile2.bam
-        java -Xmx"$_MEM" -jar /usr/gitc/picard.jar ReorderSam \
-            I=tempfile3.bam \
             O=${file_basename}.aligned.bam \
-            R=${ref}
-        rm tempfile3.bam
+            M=${file_basename}.aligned.markdup.metrics
+        rm tempfile2.bam
         samtools index ${file_basename}.aligned.bam
+
+        # collect figures of merit
+        grep -v '^>' ${sample_name}.fasta | tr -d '\n' | wc -c | tee ref_length
+        samtools view -c ${file_basename}.aligned.bam | tee reads_aligned
+        samtools flagstat ${file_basename}.aligned.bam | tee ${file_basename}.aligned.flagstat.txt
+        grep properly ${file_basename}.aligned.flagstat.txt | cut -f 1 -d ' ' | tee read_pairs_aligned
+        samtools view -q 1 -F 1028 ${file_basename}.aligned.bam | cut -f10 | tr -d '\n' | wc -c | tee bases_aligned
+        python -c "print (float("`cat bases_aligned`")/"`cat ref_length`") if "`cat ref_length`">0 else 0" > mean_coverage
     }
     output {
-        File aligned_bam = "${file_basename}.aligned.bam"
-        File aligned_bam_idx = "${file_basename}.aligned.bai"
+        File  aligned_bam          = "${file_basename}.aligned.bam"
+        File  aligned_bam_idx      = "${file_basename}.aligned.bai"
+        File  aligned_bam_flagstat = "${file_basename}.aligned.flagstat.txt"
+        File  markdup_metrics      = "${file_basename}.aligned.markdup.metrics"
+        Int   reads_aligned        = read_int("reads_aligned")
+        Int   reads_pairs_aligned  = read_int("reads_pairs_aligned")
+        Int   bases_aligned        = read_int("bases_aligned")
+        Int   ref_length           = read_int("ref_length")
+        Float mean_coverage        = read_float("mean_coverage")
     }
     runtime {
         docker: "broadinstitute/genomes-in-the-cloud:2.3.1-1512499786"
         memory: "14 GB"
-        cpu: 8
-        disks: "local-disk 100 LOCAL"
+        cpu:    8
+        disks:  "local-disk 100 LOCAL"
     }
 }
 
 
 # base quality score recalibration
-task BQSR {
-    File ref_fasta
-    File ref_idx_dict
-    File ref_idx_fai
-    File aligned_bam 
-    File aligned_bam_idx
-    Array[File] known_sites
-    Array[File] known_sites_indices
+task BaseRecalibrator_1 {
+    File          ref_fasta
+    File          ref_idx_dict
+    File          ref_idx_fai
+    File          aligned_bam
+    File          aligned_bam_idx
+    Array[File]   known_sites
     Array[String] intervals_to_exclude
 
-    String file_basename = basename(aligned_bam, ".bam")
+    String        file_basename = basename(aligned_bam, ".bam")
     
     command {
         set -ex -o pipefail
 
         # build BQSR table 
-        java -Xmx7G -jar /usr/gitc/GATK36.jar -T BaseRecalibrator -nt 1 \
+        BQSR_KNOWN_SITES="${sep=' -knownSites ' known_sites}"
+        BQSR_EXCLUDE_INTERVALS="${sep=' --excludeIntervals ' intervals_to_exclude}"
+        if [ -n "$BQSR_KNOWN_SITES" ]; then BQSR_KNOWN_SITES="-knownSites $BQSR_KNOWN_SITES"; fi
+        if [ -n "$BQSR_EXCLUDE_INTERVALS" ]; then BQSR_EXCLUDE_INTERVALS="--excludeIntervals $BQSR_EXCLUDE_INTERVALS"; fi
+        java -Xmx7G -jar /usr/gitc/GATK36.jar -T BaseRecalibrator \
+            -nct `nproc` \
             -R ${ref_fasta} -I ${aligned_bam} \
-            -knownSites ${sep=" -knownSites " known_sites} \
-            --excludeIntervals ${sep=" --excludeIntervals " intervals_to_exclude} \
+            $BQSR_KNOWN_SITES $BQSR_EXCLUDE_INTERVALS \
             -o ${file_basename}.bqsr.txt
-
-        # install GATK AnalyzeCovariates R dependencies
-        R --vanilla << CODE
-        install.packages("gplots", repos="http://cran.us.r-project.org")
-        install.packages("gsalib", repos="http://cran.us.r-project.org")
-        install.packages("reshape", repos="http://cran.us.r-project.org")
-        CODE
-
-        # AnalyzeCovariates
-        java -jar /usr/gitc/GATK36.jar \
-            -T AnalyzeCovariates \
-            -R ${ref_fasta} \
-            --BQSR ${file_basename}.bqsr.txt \
-            -plots ${file_basename}.bqsr.pdf
-
-        # clean reads, using bqsr if applicable
-        java -Xmx7G -jar /usr/gitc/GATK36.jar \
-            -T PrintReads \
-            -nt 1 \
-            -R ${ref_fasta} \
-            -I ${aligned_bam} \
-            --BQSR ${file_basename}.bqsr.txt \
-            -o ${file_basename}.bqsr.bam
-
-        # build index
-        java -Xmx7G -jar /usr/gitc/picard.jar \
-            BuildBamIndex \
-            I=${file_basename}.bqsr.bam \
-            O=${file_basename}.bqsr.bai
     }
     
     output {
-        File out_bam = "${file_basename}.bqsr.bam"
-        File out_bam_idx = "${file_basename}.bqsr.bai"
-        File table = "${file_basename}.bqsr.txt"
+        File table       = "${file_basename}.bqsr.txt"
     } 
 
     runtime {
         docker: "broadinstitute/genomes-in-the-cloud:2.3.1-1512499786"
         memory: "7 GB" 
-        cpu: 2
-        disks: "local-disk 100 LOCAL"
+        cpu:    2
+        disks:  "local-disk 100 LOCAL"
     }
 }
+
+task BaseRecalibrator_2 {
+    File          ref_fasta
+    File          ref_idx_dict
+    File          ref_idx_fai
+    File          aligned_bam
+    File          aligned_bam_idx
+    File          bqsr_table
+
+    String        file_basename = basename(aligned_bam, ".bam")
+    
+    command {
+        set -ex -o pipefail
+
+        # clean reads
+        java -Xmx3G -jar /usr/gitc/GATK36.jar \
+            -T PrintReads \
+            -nct `nproc` \
+            -R ${ref_fasta} \
+            -I ${aligned_bam} \
+            --BQSR ${bqsr_table} \
+            -o ${file_basename}.bqsr.bam &
+
+        # AnalyzeCovariates (depends on R libraries)
+        R --vanilla << CODE
+        install.packages("gplots", repos="http://cran.us.r-project.org")
+        install.packages("gsalib", repos="http://cran.us.r-project.org")
+        install.packages("reshape", repos="http://cran.us.r-project.org")
+        CODE
+        java -jar -Xmx3G /usr/gitc/GATK36.jar \
+            -T AnalyzeCovariates \
+            -R ${ref_fasta} \
+            --BQSR ${bqsr_table} \
+            -plots ${file_basename}.bqsr.pdf
+
+        wait # for PrintReads to finish
+        # index recalibrated aligned bam
+        samtools index ${file_basename}.bqsr.bam
+    }
+    
+    output {
+        File out_bam     = "${file_basename}.bqsr.bam"
+        File out_bam_idx = "${file_basename}.bqsr.bai"
+        File bqsr_plot   = "${file_basename}.bqsr.pdf"
+    } 
+
+    runtime {
+        docker: "broadinstitute/genomes-in-the-cloud:2.3.1-1512499786"
+        memory: "7 GB" 
+        cpu:    2
+        disks:  "local-disk 100 LOCAL"
+    }
+}
+
 
 # call snp and indel variants 
 task HaplotypeCaller {
@@ -177,8 +237,8 @@ task HaplotypeCaller {
     runtime {
         docker: "broadinstitute/genomes-in-the-cloud:2.3.1-1512499786"
         memory: "7 GB"
-        cpu: 2
-        disks: "local-disk 100 LOCAL"
+        cpu:    2
+        disks:  "local-disk 100 LOCAL"
     }
   }
 
@@ -222,28 +282,41 @@ task GenotypeGVCFs {
 # variant quality score recalibration
 # https://software.broadinstitute.org/gatk/documentation/article.php?id=2805
 task VQSR {
-    File         ref_fasta
-    File         ref_idx_dict
-    File         ref_idx_fai
-    File gvcf 
-    File intervals
-    String output_filename
+    File          ref_fasta
+    File          ref_idx_dict
+    File          ref_idx_fai
+    File          gvcf 
+    File          intervals
+    String        output_filename
 
-    String mode
-    Float ts_filter
+    String        mode
+    Float         ts_filter
     Array[String] resources
     Array[String] annotations
-    Array[File] resource_files
-    Array[File] resource_file_indices
+    Array[File]   resource_files
+    Array[File]   resource_file_indices
     
     Int max_gaussians
     Int mapping_qual_cap
+
+    # vqsr default values for SNP vs INDEL
+    #Float ts_filter_snp=99.0
+    #Float ts_filter_indel=99.5
+    #Int snp_max_gaussians=8
+    #Int indel_max_gaussians=4
+    #Int vqsr_mapping_qual_cap=70
+    #Array[String] snp_resources=["7g8_gb4,known=false,training=true,truth=true,prior=15.0 /cromwell_root/fc-6d3db020-0f34-4434-a132-b1a4719a6848/refs/7g8_gb4.combined.final.vcf.gz", "hb3_dd2,known=false,training=true,truth=true,prior=15.0 /cromwell_root/fc-6d3db020-0f34-4434-a132-b1a4719a6848/refs/hb3_dd2.combined.final.vcf.gz", "3d7_hb3,known=false,training=true,truth=true,prior=15.0 /cromwell_root/fc-6d3db020-0f34-4434-a132-b1a4719a6848/refs/3d7_hb3.combined.final.vcf.gz"]
+    #Array[String] indel_resources=["7g8_gb4,known=false,training=true,truth=true,prior=12.0 /cromwell_root/fc-6d3db020-0f34-4434-a132-b1a4719a6848/refs/7g8_gb4.combined.final.vcf.gz", "hb3_dd2,known=false,training=true,truth=true,prior=12.0 /cromwell_root/fc-6d3db020-0f34-4434-a132-b1a4719a6848/refs/hb3_dd2.combined.final.vcf.gz", "3d7_hb3,known=false,training=true,truth=true,prior=12.0 /cromwell_root/fc-6d3db020-0f34-4434-a132-b1a4719a6848/refs/3d7_hb3.combined.final.vcf.gz"]
+    #Array[String] snp_annotations=["QD", "FS", "SOR", "DP"]
+    #Array[String] indel_annotations=["QD", "FS"]
 
     String vqsr_file = "${mode}.recal"
     String rscript_file = "${mode}.plots.R"
     String tranches_file = "${mode}.tranches"
 
     command {
+        set -ex -o pipefail
+
         # build vqsr file
         java -Xmx7G -jar /usr/gitc/GATK36.jar \
             -T VariantRecalibrator \
@@ -290,6 +363,7 @@ task VQSR {
 # http://gatkforums.broadinstitute.org/gatk/discussion/2806/howto-apply-hard-filters-to-a-call-set
 task HardFiltration {
     File   vcf
+    File?  vcf_tbi
     File   ref_fasta
     File   ref_idx_dict
     File   ref_idx_fai
@@ -362,7 +436,8 @@ task HardFiltration {
 # annotate variants
 # Based on http://gatkforums.broadinstitute.org/gatk/discussion/50/adding-genomic-annotations-using-snpeff-and-variantannotator
 task SnpEff {
-    File   vcf    
+    File   vcf
+    File?  vcf_tbi
     File   ref_fasta 
     File   ref_gff
 
