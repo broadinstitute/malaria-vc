@@ -12,11 +12,6 @@ workflow GATK3_Joint_Call_and_Annotate {
     Array[File]+ reads_bams
     File         ref_fasta
 
-    call tasks.IndexFasta {
-        input:
-            ref_fasta = ref_fasta
-    }
-
     scatter (reads_bam in reads_bams) {
         call tasks.AlignSortDedupReads {
             input:
@@ -28,9 +23,7 @@ workflow GATK3_Joint_Call_and_Annotate {
             input:
                 aligned_bam     = AlignSortDedupReads.aligned_bam,
                 aligned_bam_idx = AlignSortDedupReads.aligned_bam_idx,
-                ref_fasta       = ref_fasta, 
-                ref_idx_dict    = IndexFasta.ref_idx_dict, 
-                ref_idx_fai     = IndexFasta.ref_idx_fai
+                ref_fasta       = ref_fasta
         }
 
         call tasks.BaseRecalibrator_2 {
@@ -38,9 +31,7 @@ workflow GATK3_Joint_Call_and_Annotate {
                 bqsr_table      = BaseRecalibrator_1.table,
                 aligned_bam     = AlignSortDedupReads.aligned_bam,
                 aligned_bam_idx = AlignSortDedupReads.aligned_bam_idx,
-                ref_fasta       = ref_fasta, 
-                ref_idx_dict    = IndexFasta.ref_idx_dict, 
-                ref_idx_fai     = IndexFasta.ref_idx_fai
+                ref_fasta       = ref_fasta
         }
 
         call tasks.HaplotypeCaller {
@@ -48,27 +39,21 @@ workflow GATK3_Joint_Call_and_Annotate {
                 aligned_bam     = AlignSortDedupReads.aligned_bam,
                 aligned_bam_idx = AlignSortDedupReads.aligned_bam_idx, 
                 bqsr_table      = BaseRecalibrator_1.table,
-                ref_fasta       = ref_fasta, 
-                ref_idx_dict    = IndexFasta.ref_idx_dict,
-                ref_idx_fai     = IndexFasta.ref_idx_fai
+                ref_fasta       = ref_fasta
         }
     }
 
     call tasks.GenotypeGVCFs {
         input:
             vcf_files    = HaplotypeCaller.vcf,
-            ref_fasta    = ref_fasta,
-            ref_idx_dict = IndexFasta.ref_idx_dict,
-            ref_idx_fai  = IndexFasta.ref_idx_fai
+            ref_fasta    = ref_fasta
     }
     
     call tasks.HardFiltration { 
         input: 
             vcf          = GenotypeGVCFs.out_vcf,
             vcf_tbi      = GenotypeGVCFs.out_vcf_tbi,
-            ref_fasta    = ref_fasta,
-            ref_idx_dict = IndexFasta.ref_idx_dict,
-            ref_idx_fai  = IndexFasta.ref_idx_fai
+            ref_fasta    = ref_fasta
     }
 
     call tasks.SnpEff {

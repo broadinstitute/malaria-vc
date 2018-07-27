@@ -9,9 +9,8 @@
 import "tasks.wdl" as tasks
 
 workflow GATK3_One_Sample_HC {
+
     File ref_fasta
-    File ref_idx_dict
-    File ref_idx_fai
 
     call tasks.AlignSortDedupReads {
         input:
@@ -22,9 +21,7 @@ workflow GATK3_One_Sample_HC {
         input:
             aligned_bam     = AlignSortDedupReads.aligned_bam,
             aligned_bam_idx = AlignSortDedupReads.aligned_bam_idx,
-            ref_fasta       = ref_fasta, 
-            ref_idx_dict    = ref_idx_dict, 
-            ref_idx_fai     = ref_idx_fai
+            ref_fasta       = ref_fasta
     }
 
     call tasks.BaseRecalibrator_2 {
@@ -32,9 +29,7 @@ workflow GATK3_One_Sample_HC {
             bqsr_table      = BaseRecalibrator_1.table,
             aligned_bam     = AlignSortDedupReads.aligned_bam,
             aligned_bam_idx = AlignSortDedupReads.aligned_bam_idx,
-            ref_fasta       = ref_fasta, 
-            ref_idx_dict    = ref_idx_dict, 
-            ref_idx_fai     = ref_idx_fai
+            ref_fasta       = ref_fasta
     }
 
     call tasks.HaplotypeCaller {
@@ -42,8 +37,6 @@ workflow GATK3_One_Sample_HC {
             aligned_bam     = AlignSortDedupReads.aligned_bam,
             aligned_bam_idx = AlignSortDedupReads.aligned_bam_idx, 
             bqsr_table      = BaseRecalibrator_1.table,
-            ref_fasta       = ref_fasta, 
-            ref_idx_dict    = ref_idx_dict,
-            ref_idx_fai     = ref_idx_fai
+            ref_fasta       = ref_fasta
     }
 }
