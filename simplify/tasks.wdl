@@ -507,7 +507,7 @@ task SnpEff {
 
         # run snpeff 
         snpEff -Xmx7G ann \
-            -config SNPEFF_DIR/snpEff.config \
+            -config $SNPEFF_DIR/snpEff.config \
             -t -noLog -ud 0 -noStats -noShiftHgvs \
             -treatAllAsProteinCoding false \
             custom_genome \
