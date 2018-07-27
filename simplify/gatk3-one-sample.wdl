@@ -17,16 +17,8 @@ workflow GATK3_One_Sample_HC {
             ref_fasta    = ref_fasta
     }
 
-    call tasks.BaseRecalibrator_1 {
+    call tasks.BaseRecalibrator {
         input:
-            aligned_bam     = AlignSortDedupReads.aligned_bam,
-            aligned_bam_idx = AlignSortDedupReads.aligned_bam_idx,
-            ref_fasta       = ref_fasta
-    }
-
-    call tasks.BaseRecalibrator_2 {
-        input:
-            bqsr_table      = BaseRecalibrator_1.table,
             aligned_bam     = AlignSortDedupReads.aligned_bam,
             aligned_bam_idx = AlignSortDedupReads.aligned_bam_idx,
             ref_fasta       = ref_fasta
@@ -34,9 +26,8 @@ workflow GATK3_One_Sample_HC {
 
     call tasks.HaplotypeCaller {
         input:
-            aligned_bam     = AlignSortDedupReads.aligned_bam,
-            aligned_bam_idx = AlignSortDedupReads.aligned_bam_idx, 
-            bqsr_table      = BaseRecalibrator_1.table,
+            aligned_bam     = BaseRecalibrator.out_bam,
+            aligned_bam_idx = BaseRecalibrator.out_bam_idx, 
             ref_fasta       = ref_fasta
     }
 }

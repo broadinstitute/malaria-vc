@@ -129,96 +129,76 @@ task AlignSortDedupReads {
 
 
 # base quality score recalibration
-task BaseRecalibrator_1 {
+task BaseRecalibrator {
     File           ref_fasta
     File           aligned_bam
-    File?          aligned_bam_idx
+    File           aligned_bam_idx
+
     Array[File]?   known_sites
     Array[String]? intervals_to_exclude
 
-    String        file_basename = basename(aligned_bam, ".bam")
+    String         file_basename = basename(aligned_bam, ".bam")
     
     command {
         set -ex -o pipefail
         PATH=$PATH:/usr/gitc
 
-        # index fasta
-        _REF_FASTA_LOCAL=`basename ${ref_fasta}`
-        ln -s ${ref_fasta} $_REF_FASTA_LOCAL
-        samtools faidx $_REF_FASTA_LOCAL
-        java -Xmx2G -jar /usr/gitc/picard.jar CreateSequenceDictionary \
-            R=$_REF_FASTA_LOCAL O=`basename $_REF_FASTA_LOCAL .fasta`.dict
-
-        # build BQSR table 
+        # prep known_sites/exclude params for BQSR
         BQSR_KNOWN_SITES="${sep=' -knownSites ' known_sites}"
         BQSR_EXCLUDE_INTERVALS="${sep=' --excludeIntervals ' intervals_to_exclude}"
         if [ -n "$BQSR_KNOWN_SITES" ]; then BQSR_KNOWN_SITES="-knownSites $BQSR_KNOWN_SITES"; fi
         if [ -n "$BQSR_EXCLUDE_INTERVALS" ]; then BQSR_EXCLUDE_INTERVALS="--excludeIntervals $BQSR_EXCLUDE_INTERVALS"; fi
-        java -Xmx7G -jar /usr/gitc/GATK36.jar -T BaseRecalibrator \
-            -nct `nproc` \
-            -R $_REF_FASTA_LOCAL -I ${aligned_bam} \
-            $BQSR_KNOWN_SITES $BQSR_EXCLUDE_INTERVALS \
-            -o ${file_basename}.bqsr.txt
+
+        if [ -n "$BQSR_KNOWN_SITES" ]; then
+            # known_sites is supplied, so run BQSR
+
+            # index fasta
+            _REF_FASTA_LOCAL=`basename ${ref_fasta}`
+            ln -s ${ref_fasta} $_REF_FASTA_LOCAL
+            samtools faidx $_REF_FASTA_LOCAL
+            java -Xmx2G -jar /usr/gitc/picard.jar CreateSequenceDictionary \
+                R=$_REF_FASTA_LOCAL O=`basename $_REF_FASTA_LOCAL .fasta`.dict
+
+            # build BQSR table 
+            java -Xmx7G -jar /usr/gitc/GATK36.jar -T BaseRecalibrator \
+                -nct `nproc` \
+                -R $_REF_FASTA_LOCAL -I ${aligned_bam} \
+                $BQSR_KNOWN_SITES $BQSR_EXCLUDE_INTERVALS \
+                -o ${file_basename}.bqsr.txt
+
+            # rewrite qual scores to new BAM
+            java -Xmx3G -jar /usr/gitc/GATK36.jar \
+                -T PrintReads \
+                -nct `nproc` \
+                -R $_REF_FASTA_LOCAL \
+                -I ${aligned_bam} \
+                --BQSR ${file_basename}.bqsr.txt \
+                -o ${file_basename}.bqsr.bam &
+
+            # AnalyzeCovariates (depends on R libraries)
+            echo 'install.packages("gplots", repos="http://cran.us.r-project.org"); install.packages("gsalib", repos="http://cran.us.r-project.org"); install.packages("reshape", repos="http://cran.us.r-project.org")' | R --vanilla
+            java -jar -Xmx3G /usr/gitc/GATK36.jar \
+                -T AnalyzeCovariates \
+                -R $_REF_FASTA_LOCAL \
+                --BQSR ${file_basename}.bqsr.txt \
+                -plots ${file_basename}.bqsr.pdf
+
+            wait # for PrintReads to finish
+            # index recalibrated aligned bam
+            samtools index ${file_basename}.bqsr.bam ${file_basename}.bqsr.bai
+
+        else
+            # known_sites is empty, therefore skip BQSR (which requires known_sites)
+            # cp instead of ln -s because of how cromwell handles chroot/docker stuff
+            cp ${aligned_bam} ${file_basename}.bqsr.bam
+            cp ${aligned_bam_idx} ${file_basename}.bqsr.bai
+            touch ${file_basename}.bqsr.txt ${file_basename}.bqsr.pdf
+
+        fi
     }
     
     output {
         File table       = "${file_basename}.bqsr.txt"
-    } 
-
-    runtime {
-        docker: "broadinstitute/genomes-in-the-cloud:2.3.1-1512499786"
-        memory: "7 GB" 
-        cpu:    2
-        disks:  "local-disk 100 SSD"
-    }
-}
-
-task BaseRecalibrator_2 {
-    File          ref_fasta
-    File          aligned_bam
-    File?         aligned_bam_idx
-    File          bqsr_table
-
-    String        file_basename = basename(aligned_bam, ".bam")
-    
-    command {
-        set -ex -o pipefail
-        PATH=$PATH:/usr/gitc
-
-        # index fasta
-        _REF_FASTA_LOCAL=`basename ${ref_fasta}`
-        ln -s ${ref_fasta} $_REF_FASTA_LOCAL
-        samtools faidx $_REF_FASTA_LOCAL
-        java -Xmx2G -jar /usr/gitc/picard.jar CreateSequenceDictionary \
-            R=$_REF_FASTA_LOCAL O=`basename $_REF_FASTA_LOCAL .fasta`.dict
-
-        # clean reads
-        java -Xmx3G -jar /usr/gitc/GATK36.jar \
-            -T PrintReads \
-            -nct `nproc` \
-            -R $_REF_FASTA_LOCAL \
-            -I ${aligned_bam} \
-            --BQSR ${bqsr_table} \
-            -o ${file_basename}.bqsr.bam &
-
-        # AnalyzeCovariates (depends on R libraries)
-        R --vanilla << CODE
-        install.packages("gplots", repos="http://cran.us.r-project.org")
-        install.packages("gsalib", repos="http://cran.us.r-project.org")
-        install.packages("reshape", repos="http://cran.us.r-project.org")
-        CODE
-        java -jar -Xmx3G /usr/gitc/GATK36.jar \
-            -T AnalyzeCovariates \
-            -R $_REF_FASTA_LOCAL \
-            --BQSR ${bqsr_table} \
-            -plots ${file_basename}.bqsr.pdf
-
-        wait # for PrintReads to finish
-        # index recalibrated aligned bam
-        samtools index ${file_basename}.bqsr.bam ${file_basename}.bqsr.bai
-    }
-    
-    output {
         File out_bam     = "${file_basename}.bqsr.bam"
         File out_bam_idx = "${file_basename}.bqsr.bai"
         File bqsr_plot   = "${file_basename}.bqsr.pdf"

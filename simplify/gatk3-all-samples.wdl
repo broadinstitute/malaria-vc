@@ -12,6 +12,8 @@ workflow GATK3_Joint_Call_and_Annotate {
     Array[File]+ reads_bams
     File         ref_fasta
 
+    Array[File]? bqsr_known_sites  # empty array will skip BQSR
+
     scatter (reads_bam in reads_bams) {
         call tasks.AlignSortDedupReads {
             input:
@@ -19,26 +21,18 @@ workflow GATK3_Joint_Call_and_Annotate {
                 ref_fasta = ref_fasta
         }
 
-        call tasks.BaseRecalibrator_1 {
+        call tasks.BaseRecalibrator {
             input:
                 aligned_bam     = AlignSortDedupReads.aligned_bam,
                 aligned_bam_idx = AlignSortDedupReads.aligned_bam_idx,
-                ref_fasta       = ref_fasta
-        }
-
-        call tasks.BaseRecalibrator_2 {
-            input:
-                bqsr_table      = BaseRecalibrator_1.table,
-                aligned_bam     = AlignSortDedupReads.aligned_bam,
-                aligned_bam_idx = AlignSortDedupReads.aligned_bam_idx,
+                known_sites     = bqsr_known_sites,
                 ref_fasta       = ref_fasta
         }
 
         call tasks.HaplotypeCaller {
             input:
-                aligned_bam     = AlignSortDedupReads.aligned_bam,
-                aligned_bam_idx = AlignSortDedupReads.aligned_bam_idx, 
-                bqsr_table      = BaseRecalibrator_1.table,
+                aligned_bam     = BaseRecalibrator.out_bam,
+                aligned_bam_idx = BaseRecalibrator.out_bam_idx, 
                 ref_fasta       = ref_fasta
         }
     }
