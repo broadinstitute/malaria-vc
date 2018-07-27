@@ -71,10 +71,10 @@ task AlignSortDedupReads {
                 INPUT=tempfile0.bam \
                 FASTQ=/dev/stdout \
                 INTERLEAVE=true \
-                VALIDATION_STRINGENCY=LENIENT \
-            | bwa mem -t `nproc` -R "$_RG_DATA" -p $_REF_FASTA_LOCAL - \
-            | samtools view -b1S - \
-            > tempfile1.bam
+                VALIDATION_STRINGENCY=LENIENT | \
+            bwa mem -t `nproc` -R "$_RG_DATA" -p $_REF_FASTA_LOCAL - | \
+            samtools view -b1S - > \
+            tempfile1.bam
             rm tempfile0.bam
 
             # sort bam and record filename in text file
