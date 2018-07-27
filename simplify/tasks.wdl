@@ -64,32 +64,37 @@ task AlignSortDedupReads {
             samtools view -b1 -r $_RG_ID ${reads_bam} > tempfile0.bam
             _RG_DATA=`samtools view -H ${reads_bam} | grep ^@RG | grep ID:$_RG_ID | sed -E -e 's/[[:space:]]+/\\\\t/g'`
 
-            # TO DO: defend against empty tempfile0.bam (zero reads for this RG)
+            # Only align if there are reads in this read group
+            if [ `samtools view -c tempfile0.bam` -gt 0 ]; then
+                # align uBAM reads to indexed reference and emit aligned bam output
+                java -Xmx2G -jar /usr/gitc/picard.jar SamToFastq \
+                    INPUT=tempfile0.bam \
+                    FASTQ=/dev/stdout \
+                    INTERLEAVE=true \
+                    VALIDATION_STRINGENCY=LENIENT | \
+                bwa mem -t `nproc` -R "$_RG_DATA" -p $_REF_FASTA_LOCAL - | \
+                samtools view -b1S - > \
+                tempfile1.bam
+                rm tempfile0.bam
 
-            # align uBAM reads to indexed reference and emit aligned bam output
-            java -Xmx2G -jar /usr/gitc/picard.jar SamToFastq \
-                INPUT=tempfile0.bam \
-                FASTQ=/dev/stdout \
-                INTERLEAVE=true \
-                VALIDATION_STRINGENCY=LENIENT | \
-            bwa mem -t `nproc` -R "$_RG_DATA" -p $_REF_FASTA_LOCAL - | \
-            samtools view -b1S - > \
-            tempfile1.bam
-            rm tempfile0.bam
-
-            # sort bam and record filename in text file
-            samtools sort -@ `nproc` -l 1 -T tmpsort -o aligned_$_RG_ID.bam tempfile1.bam
-            rm tempfile1.bam
-            echo "I=aligned_$_RG_ID.bam" >> bam_filenames.txt
+                # sort bam and record filename in text file
+                samtools sort -@ `nproc` -l 1 -T tmpsort -o aligned_$_RG_ID.bam tempfile1.bam
+                rm tempfile1.bam
+                echo "I=aligned_$_RG_ID.bam" >> bam_filenames.txt
+            fi
         done
 
-        # TO DO: harden generally against empty input bam (zero reads)
-
-        # merge bwa results for each read group
-        java -Xmx12G -jar /usr/gitc/picard.jar MergeSamFiles \
-            SORT_ORDER=coordinate USE_THREADING=true CREATE_INDEX=true \
-            `cat bam_filenames.txt` \
-            O=temp_merged_aligned.bam
+        # Merge alignments if there are any
+        if [ `wc -l bam_filenames.txt` -gt 0 ]; then
+            # merge bwa results for each read group
+            java -Xmx12G -jar /usr/gitc/picard.jar MergeSamFiles \
+                SORT_ORDER=coordinate USE_THREADING=true CREATE_INDEX=true \
+                `cat bam_filenames.txt` \
+                O=temp_merged_aligned.bam
+        else
+            # no reads to align, just copy the original empty bam instead
+            cp ${reads_bam} temp_merged_aligned.bam
+        fi
 
         # MarkDuplicates and index
         java -Xmx12G -jar /usr/gitc/picard.jar MarkDuplicates \
@@ -483,7 +488,7 @@ task HardFiltration {
 # Based on http://gatkforums.broadinstitute.org/gatk/discussion/50/adding-genomic-annotations-using-snpeff-and-variantannotator
 task SnpEff {
     File   vcf
-    File?  vcf_tbi
+    File   vcf_tbi
     File   ref_fasta 
     File   ref_gff
 
@@ -491,24 +496,27 @@ task SnpEff {
 
     command {
         set -ex -o pipefail
+        SNPEFF_DIR=/usr/local/share/snpeff-4.3.1t-1
 
-        # init database
-        echo "custom_genome.genome : Plasmodium_falciparum_3D7" >> /opt/snpEff/snpEff.config
-        mkdir -p /opt/snpEff/data/custom_genome
-        mv ${ref_fasta} /opt/snpEff/data/custom_genome/sequences.fa
-        mv ${ref_gff} /opt/snpEff/data/custom_genome/genes.gff
-
-        # build db 
-        java -jar /opt/snpEff/snpEff.jar build -gff3 -v custom_genome
+        # init and build custom database
+        echo "custom_genome.genome : Plasmodium_falciparum_3D7" >> $SNPEFF_DIR/snpEff.config
+        mkdir -p $SNPEFF_DIR/data/custom_genome
+        mv ${ref_fasta} $SNPEFF_DIR/data/custom_genome/sequences.fa
+        mv ${ref_gff} $SNPEFF_DIR/data/custom_genome/genes.gff
+        snpEff build -gff3 -v custom_genome
 
         # run snpeff 
-        java -Xmx7G -jar /opt/snpEff/snpEff.jar \
-            -config /opt/snpEff/snpEff.config \
-            -t -noLog -ud 0 -noStats -noShiftHgvs
+        snpEff -Xmx7G ann \
+            -config SNPEFF_DIR/snpEff.config \
+            -t -noLog -ud 0 -noStats -noShiftHgvs \
             -treatAllAsProteinCoding false \
             custom_genome \
-            ${vcf} \
-            > ${base_filename}.snpeff.vcf
+            ${vcf} > \
+            ${base_filename}.snpeff.vcf
+
+        # this container doesn't have bgzip or tabix! TO DO: make our own that does
+        #/usr/gitc/bgzip -c --threads `nproc` ${base_filename}.snpeff.vcf > ${base_filename}.snpeff.vcf.gz
+        #/usr/gitc/tabix -p vcf ${base_filename}.snpeff.vcf.gz
     }
 
     output {
@@ -516,9 +524,9 @@ task SnpEff {
     }
 
     runtime { 
-        docker: "maxulysse/snpeff:1.3"
+        docker: "quay.io/biocontainers/snpeff:4.3.1t--1"
         memory: "7 GB"
         cpu: 2
-        disks: "local-disk 100 SSD"
+        disks: "local-disk 50 SSD"
     }
 }
