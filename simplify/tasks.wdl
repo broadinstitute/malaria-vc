@@ -461,7 +461,7 @@ task HardFiltration {
             --variant filtered_snps.vcf \
             --variant filtered_indels.vcf \
             -o ${base_filename}.filtered.vcf \
-            --genotypemergeoption REQUIRE_UNIQUE
+            --genotypemergeoption UNIQUIFY
         /usr/gitc/bgzip -c --threads `nproc` ${base_filename}.filtered.vcf > ${base_filename}.filtered.vcf.gz
         /usr/gitc/tabix -p vcf ${base_filename}.filtered.vcf.gz
     }
