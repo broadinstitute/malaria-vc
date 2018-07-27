@@ -504,8 +504,7 @@ task SnpEff {
         # run snpeff 
         java -Xmx7G -jar /opt/snpEff/snpEff.jar \
             -config /opt/snpEff/snpEff.config \
-            -formatEff -no-downstream -no-intergenic \
-            -no-upstream -no-utr -noStats \
+            -t -noLog -ud 0 -noStats -noShiftHgvs
             -treatAllAsProteinCoding false \
             custom_genome \
             ${vcf} \
