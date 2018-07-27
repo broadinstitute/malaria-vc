@@ -441,7 +441,6 @@ task HardFiltration {
             --filterExpression "${snp_filter_expr}" \
             --filterName "snp_filter" \
             -o filtered_snps.vcf
-        rm raw_snps.vcf
 
         # select & filter indels -> filtered_indels.vcf
         java -Xmx3G -jar /usr/gitc/GATK36.jar \
@@ -457,7 +456,6 @@ task HardFiltration {
             --filterExpression "${indel_filter_expr}" \
             --filterName "indel_filter" \
             -o filtered_indels.vcf
-        rm raw_indels.vcf
 
         # combine variants
         java -Xmx7G -jar /usr/gitc/GATK36.jar \
@@ -469,12 +467,26 @@ task HardFiltration {
             --genotypemergeoption UNIQUIFY
         /usr/gitc/bgzip -c --threads `nproc` ${base_filename}.filtered.vcf > ${base_filename}.filtered.vcf.gz
         /usr/gitc/tabix -p vcf ${base_filename}.filtered.vcf.gz
+
+        # vcf row counts
+        zcat ${vcf} | grep -v '^#' | wc -l | tee vcf_count_unfiltered
+        cat raw_snps.vcf | grep -v '^#' | wc -l | tee vcf_count_snps_unfiltered
+        cat raw_indels.vcf | grep -v '^#' | wc -l | tee vcf_count_indels_unfiltered
+        cat ${base_filename}.filtered.vcf | grep -v '^#' | wc -l | tee vcf_count_filtered
+        cat filtered_snps.vcf | grep -v '^#' | wc -l | tee vcf_count_snps_filtered
+        cat filtered_indels.vcf | grep -v '^#' | wc -l | tee vcf_count_indels_filtered
     }
 
     output {
-        File out_vcf     = "${base_filename}.filtered.vcf.gz"
-        File out_vcf_tbi = "${base_filename}.filtered.vcf.gz.tbi"
-    } 
+        File out_vcf                     = "${base_filename}.filtered.vcf.gz"
+        File out_vcf_tbi                 = "${base_filename}.filtered.vcf.gz.tbi"
+        Int  vcf_count_unfiltered        = read_int(vcf_count_unfiltered)
+        Int  vcf_count_filtered          = read_int(vcf_count_filtered)
+        Int  vcf_count_snps_unfiltered   = read_int(vcf_count_snps_unfiltered)
+        Int  vcf_count_snps_filtered     = read_int(vcf_count_snps_filtered)
+        Int  vcf_count_indels_unfiltered = read_int(vcf_count_indels_unfiltered)
+        Int  vcf_count_indels_filtered   = read_int(vcf_count_indels_filtered)
+    }
 
     runtime {
         docker: "broadinstitute/genomes-in-the-cloud:2.3.1-1512499786"
