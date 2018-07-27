@@ -300,7 +300,6 @@ task GenotypeGVCFs {
             -V ${sep=" -V " vcf_files} \
             ${'--intervals ' + intervals} \
             ${true="-allSites" false="" all_sites} \
-            -nt `nproc` \
             --out ${out_basename}.vcf
         /usr/gitc/bgzip -c --threads `nproc` ${out_basename}.vcf > ${out_basename}.vcf.gz
         /usr/gitc/tabix -p vcf ${out_basename}.vcf.gz
