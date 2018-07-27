@@ -7,7 +7,7 @@
 
 import "tasks.wdl" as tasks
 
-workflow GATK3_Joint_Call_and_Annotate {
+workflow MultiSample_Align_Genotype_Annotate {
 
     Array[File]+ reads_bams
     File         ref_fasta

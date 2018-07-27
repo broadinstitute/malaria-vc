@@ -319,7 +319,7 @@ task GenotypeGVCFs {
 
 # variant quality score recalibration
 # https://software.broadinstitute.org/gatk/documentation/article.php?id=2805
-task VQSR {
+task VariantRecalibrator {
     File          ref_fasta
     File          gvcf 
     File          intervals

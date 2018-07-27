@@ -8,7 +8,7 @@
 
 import "tasks.wdl" as tasks
 
-workflow GATK3_Multi_Sample {
+workflow Merge_gVCFs_Genotype_Annotate {
 
     File ref_fasta
 

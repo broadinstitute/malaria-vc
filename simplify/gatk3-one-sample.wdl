@@ -8,7 +8,7 @@
 
 import "tasks.wdl" as tasks
 
-workflow GATK3_One_Sample_HC {
+workflow Align_HaplotypeCaller_One_Sample {
 
     File ref_fasta
 
