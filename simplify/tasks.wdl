@@ -114,7 +114,7 @@ task AlignSortDedupReads {
         File  aligned_bam_flagstat = "${file_basename}.aligned.flagstat.txt"
         File  markdup_metrics      = "${file_basename}.aligned.markdup.metrics"
         Int   reads_aligned        = read_int("reads_aligned")
-        Int   reads_pairs_aligned  = read_int("reads_pairs_aligned")
+        Int   read_pairs_aligned   = read_int("read_pairs_aligned")
         Int   bases_aligned        = read_int("bases_aligned")
         Int   ref_length           = read_int("ref_length")
         Float mean_coverage        = read_float("mean_coverage")
