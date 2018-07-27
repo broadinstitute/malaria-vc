@@ -85,7 +85,7 @@ task AlignSortDedupReads {
         done
 
         # Merge alignments if there are any
-        if [ `wc -l bam_filenames.txt` -gt 0 ]; then
+        if [ `cat bam_filenames.txt | wc -l` -gt 0 ]; then
             # merge bwa results for each read group
             java -Xmx12G -jar /usr/gitc/picard.jar MergeSamFiles \
                 SORT_ORDER=coordinate USE_THREADING=true CREATE_INDEX=true \
