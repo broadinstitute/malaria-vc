@@ -9,20 +9,20 @@ task IndexFasta {
     # It's certainly not useful for a 24MB genome
     File   ref_fasta
 
-    String file_basename = basename(ref_fasta)
+    String file_basename = basename(ref_fasta, '.fasta')
     command {
         set -ex -o pipefail
         PATH=$PATH:/usr/gitc
 
-        ln -s ${ref_fasta} ${file_basename}
-        samtools faidx ${file_basename}
+        ln -s ${ref_fasta} ${file_basename}.fasta
+        samtools faidx ${file_basename}.fasta
         java -Xmx3G -jar /usr/gitc/picard.jar CreateSequenceDictionary \
-            R=${ref_fasta} O=${file_basename}.dict
+            R=$_REF_FASTA_LOCAL O=${file_basename}.dict
         ls -alF ${file_basename}*
     }
     output {
         File  ref_idx_dict     = "${file_basename}.dict"
-        File  ref_idx_fai      = "${file_basename}.fai"
+        File  ref_idx_fai      = "${file_basename}.fasta.fai"
     }
     runtime {
         docker: "broadinstitute/genomes-in-the-cloud:2.3.1-1512499786"
@@ -48,7 +48,7 @@ task AlignSortDedupReads {
         bwa index $_REF_FASTA_LOCAL
         samtools faidx $_REF_FASTA_LOCAL
         java -Xmx2G -jar /usr/gitc/picard.jar CreateSequenceDictionary \
-            R=$_REF_FASTA_LOCAL O=$_REF_FASTA_LOCAL.dict
+            R=$_REF_FASTA_LOCAL O=`basename $_REF_FASTA_LOCAL .fasta`.dict
         cat $_REF_FASTA_LOCAL.dict
 
         # get list of read groups
@@ -100,7 +100,7 @@ task AlignSortDedupReads {
         samtools index ${file_basename}.aligned.bam ${file_basename}.aligned.bai
 
         # collect figures of merit
-        cat $_REF_FASTA_LOCAL.dict | grep "^@SQ" | sed -E -e 's/^@SQ.*LN:([^[:space:]]+).*$/\1/' | python -c 'import sys; print(sum(int(l) for l in sys.stdin))' | tee ref_length
+        cat `basename $_REF_FASTA_LOCAL .fasta`.dict | grep "^@SQ" | sed -E -e 's/^@SQ.*LN:([^[:space:]]+).*$/\1/' | python -c 'import sys; print(sum(int(l) for l in sys.stdin))' | tee ref_length
         #grep -v '^>' ${ref_fasta}.fasta | tr -d '\n' | wc -c | tee ref_length
         samtools view -c ${file_basename}.aligned.bam | tee reads_aligned
         samtools flagstat ${file_basename}.aligned.bam | tee ${file_basename}.aligned.flagstat.txt
@@ -147,7 +147,7 @@ task BaseRecalibrator_1 {
         ln -s ${ref_fasta} $_REF_FASTA_LOCAL
         samtools faidx $_REF_FASTA_LOCAL
         java -Xmx2G -jar /usr/gitc/picard.jar CreateSequenceDictionary \
-            R=$_REF_FASTA_LOCAL O=$_REF_FASTA_LOCAL.dict
+            R=$_REF_FASTA_LOCAL O=`basename $_REF_FASTA_LOCAL .fasta`.dict
 
         # build BQSR table 
         BQSR_KNOWN_SITES="${sep=' -knownSites ' known_sites}"
@@ -190,7 +190,7 @@ task BaseRecalibrator_2 {
         ln -s ${ref_fasta} $_REF_FASTA_LOCAL
         samtools faidx $_REF_FASTA_LOCAL
         java -Xmx2G -jar /usr/gitc/picard.jar CreateSequenceDictionary \
-            R=$_REF_FASTA_LOCAL O=$_REF_FASTA_LOCAL.dict
+            R=$_REF_FASTA_LOCAL O=`basename $_REF_FASTA_LOCAL .fasta`.dict
 
         # clean reads
         java -Xmx3G -jar /usr/gitc/GATK36.jar \
@@ -257,7 +257,7 @@ task HaplotypeCaller {
         ln -s ${ref_fasta} $_REF_FASTA_LOCAL
         samtools faidx $_REF_FASTA_LOCAL
         java -Xmx2G -jar /usr/gitc/picard.jar CreateSequenceDictionary \
-            R=$_REF_FASTA_LOCAL O=$_REF_FASTA_LOCAL.dict
+            R=$_REF_FASTA_LOCAL O=`basename $_REF_FASTA_LOCAL .fasta`.dict
 
         java -Xmx7G -jar /usr/gitc/GATK36.jar \
             -T HaplotypeCaller \
@@ -306,7 +306,7 @@ task GenotypeGVCFs {
         ln -s ${ref_fasta} $_REF_FASTA_LOCAL
         samtools faidx $_REF_FASTA_LOCAL
         java -Xmx2G -jar /usr/gitc/picard.jar CreateSequenceDictionary \
-            R=$_REF_FASTA_LOCAL O=$_REF_FASTA_LOCAL.dict
+            R=$_REF_FASTA_LOCAL O=`basename $_REF_FASTA_LOCAL .fasta`.dict
 
         java -Xmx12G -jar /usr/gitc/GATK36.jar \
             -T GenotypeGVCFs \
@@ -336,8 +336,6 @@ task GenotypeGVCFs {
 # https://software.broadinstitute.org/gatk/documentation/article.php?id=2805
 task VQSR {
     File          ref_fasta
-    File          ref_idx_dict
-    File          ref_idx_fai
     File          gvcf 
     File          intervals
     String        output_filename
@@ -371,10 +369,17 @@ task VQSR {
         set -ex -o pipefail
         PATH=$PATH:/usr/gitc
 
+        # index fasta
+        _REF_FASTA_LOCAL=`basename ${ref_fasta}`
+        ln -s ${ref_fasta} $_REF_FASTA_LOCAL
+        samtools faidx $_REF_FASTA_LOCAL
+        java -Xmx2G -jar /usr/gitc/picard.jar CreateSequenceDictionary \
+            R=$_REF_FASTA_LOCAL O=`basename $_REF_FASTA_LOCAL .fasta`.dict
+
         # build vqsr file
         java -Xmx7G -jar /usr/gitc/GATK36.jar \
             -T VariantRecalibrator \
-            -R ${ref_fasta} \
+            -R $_REF_FASTA_LOCAL \
             --input ${gvcf} \
             --mode ${mode} \
             --recal_file ${vqsr_file} \
@@ -389,7 +394,7 @@ task VQSR {
         # apply vqsr
         java -Xmx7G -jar /usr/gitc/GATK36.jar \
             -T ApplyRecalibration \
-            -R ${ref_fasta} \
+            -R $_REF_FASTA_LOCAL \
             --input ${gvcf} \
             --ts_filter_level ${ts_filter} \
             --tranches_file ${tranches_file} \
@@ -434,7 +439,7 @@ task HardFiltration {
         ln -s ${ref_fasta} $_REF_FASTA_LOCAL
         samtools faidx $_REF_FASTA_LOCAL
         java -Xmx2G -jar /usr/gitc/picard.jar CreateSequenceDictionary \
-            R=$_REF_FASTA_LOCAL O=$_REF_FASTA_LOCAL.dict
+            R=$_REF_FASTA_LOCAL O=`basename $_REF_FASTA_LOCAL .fasta`.dict
 
         # select & filter snps -> filtered_snps.vcf
         java -Xmx3G -jar /usr/gitc/GATK36.jar \
