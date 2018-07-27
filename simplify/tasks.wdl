@@ -62,9 +62,9 @@ task AlignSortDedupReads {
 
             # strip input bam to only one read group
             samtools view -b1 -r $_RG_ID ${reads_bam} > tempfile0.bam
-            _RG_DATA=`samtools view -H ${reads_bam} | grep ^@RG | grep ID:$_RG_ID | sed -E -e 's/[[:space:]]+/\\t/g'`
+            _RG_DATA=`samtools view -H ${reads_bam} | grep ^@RG | grep ID:$_RG_ID | sed -E -e 's/[[:space:]]+/\\\\t/g'`
 
-            # TO DO: defend against empty tempfile0.bam (zero reads)
+            # TO DO: defend against empty tempfile0.bam (zero reads for this RG)
 
             # align uBAM reads to indexed reference and emit aligned bam output
             java -Xmx2G -jar /usr/gitc/picard.jar SamToFastq \
@@ -97,7 +97,7 @@ task AlignSortDedupReads {
             O=${file_basename}.aligned.bam \
             M=${file_basename}.aligned.markdup.metrics
         rm temp_merged_aligned.bam
-        samtools index ${file_basename}.aligned.bam
+        samtools index ${file_basename}.aligned.bam ${file_basename}.aligned.bai
 
         # collect figures of merit
         cat $_REF_FASTA_LOCAL.dict | grep "^@SQ" | sed -E -e 's/^@SQ.*LN:([^[:space:]]+).*$/\1/' | python -c 'import sys; print(sum(int(l) for l in sys.stdin))' | tee ref_length
@@ -215,7 +215,7 @@ task BaseRecalibrator_2 {
 
         wait # for PrintReads to finish
         # index recalibrated aligned bam
-        samtools index ${file_basename}.bqsr.bam
+        samtools index ${file_basename}.bqsr.bam ${file_basename}.bqsr.bai
     }
     
     output {
