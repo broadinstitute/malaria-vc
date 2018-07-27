@@ -480,12 +480,12 @@ task HardFiltration {
     output {
         File out_vcf                     = "${base_filename}.filtered.vcf.gz"
         File out_vcf_tbi                 = "${base_filename}.filtered.vcf.gz.tbi"
-        Int  vcf_count_unfiltered        = read_int(vcf_count_unfiltered)
-        Int  vcf_count_filtered          = read_int(vcf_count_filtered)
-        Int  vcf_count_snps_unfiltered   = read_int(vcf_count_snps_unfiltered)
-        Int  vcf_count_snps_filtered     = read_int(vcf_count_snps_filtered)
-        Int  vcf_count_indels_unfiltered = read_int(vcf_count_indels_unfiltered)
-        Int  vcf_count_indels_filtered   = read_int(vcf_count_indels_filtered)
+        Int  vcf_count_unfiltered        = read_int("vcf_count_unfiltered")
+        Int  vcf_count_filtered          = read_int("vcf_count_filtered")
+        Int  vcf_count_snps_unfiltered   = read_int("vcf_count_snps_unfiltered")
+        Int  vcf_count_snps_filtered     = read_int("vcf_count_snps_filtered")
+        Int  vcf_count_indels_unfiltered = read_int("vcf_count_indels_unfiltered")
+        Int  vcf_count_indels_filtered   = read_int("vcf_count_indels_filtered")
     }
 
     runtime {
