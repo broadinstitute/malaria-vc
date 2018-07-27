@@ -39,8 +39,9 @@ workflow GATK3_Joint_Call_and_Annotate {
 
     call tasks.GenotypeGVCFs {
         input:
-            vcf_files    = HaplotypeCaller.vcf,
-            ref_fasta    = ref_fasta
+            vcf_files       = HaplotypeCaller.vcf,
+            vcf_indexes_tbi = HaplotypeCaller.vcf_tbi,
+            ref_fasta       = ref_fasta
     }
     
     call tasks.HardFiltration { 

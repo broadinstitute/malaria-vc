@@ -271,6 +271,7 @@ task HaplotypeCaller {
 # merge and genotype vcfs 
 task GenotypeGVCFs {
     Array[File]+ vcf_files
+    Array[File]+ vcf_indexes_tbi
     File         ref_fasta
 
     File?        intervals  # convert to Array[String] perhaps?
