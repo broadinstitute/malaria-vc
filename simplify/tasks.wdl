@@ -49,7 +49,7 @@ task AlignSortDedupReads {
         samtools faidx $_REF_FASTA_LOCAL
         java -Xmx2G -jar /usr/gitc/picard.jar CreateSequenceDictionary \
             R=$_REF_FASTA_LOCAL O=`basename $_REF_FASTA_LOCAL .fasta`.dict
-        cat $_REF_FASTA_LOCAL.dict
+        cat `basename $_REF_FASTA_LOCAL .fasta`.dict
 
         # get list of read groups
         samtools view -H ${reads_bam} | grep ^@RG | sed -E -e 's/^@RG.*ID:([^[:space:]]+).*$/\1/' | tee read_group_ids.txt
